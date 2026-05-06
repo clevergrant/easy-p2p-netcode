@@ -9,6 +9,10 @@ import {
   handleSend,
 } from './actions.ts'
 
+export { createBlobsStore } from './blobs-store.ts'
+export type { BlobLikeStore } from './blobs-store.ts'
+export type { SignalingStore, LobbyState } from './store.ts'
+
 export interface SignalingHandlerOptions {
   store: SignalingStore
 }
