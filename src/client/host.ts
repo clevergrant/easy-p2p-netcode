@@ -41,8 +41,12 @@ export async function createHost<P extends ProtocolDef<SchemaMap, SchemaMap>>(
   const registry = new PeerRegistry()
   const limiter = new TokenBucketLimiter(opts.rateLimit)
 
-  signaling.subscribe(async (from, raw) => {
-    if (from !== hostPeerId) return
+  signaling.subscribe(async (_from, raw) => {
+    // Peer-joined / peer-left notifications are server-synthesized and addressed
+    // to the host. Their `from` field is the affected peer's id, not the host's,
+    // so we don't filter on `from` here — the discriminator on `kind` is enough.
+    // Offer/answer/ice signals for individual peers are handled separately in
+    // acceptPeer's per-peer subscriber.
     const parsed = PeerToPeerSignal.safeParse(raw)
     if (!parsed.success) return
     if (parsed.data.kind === 'peer-joined') {
