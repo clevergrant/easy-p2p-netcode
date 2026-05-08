@@ -41,10 +41,42 @@ export async function connectToHost(opts: ConnectToHostOptions): Promise<Transpo
     }
   })
 
+  // Cap the entire wait — if the host never sends an offer (because they're
+  // gone), `ondatachannel` never fires and channelPromise hangs forever
+  // without this. The timeout originally only covered awaitChannelOpen, which
+  // never even runs in the no-offer case.
+  const totalTimeoutMs = opts.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(
+      () => reject(new Error('connect to host timed out')),
+      totalTimeoutMs,
+    )
+  })
+
+  // The polling loop will detect a deleted lobby via repeated 4xx responses
+  // and surface a fatal-error signal long before the timeout expires. Race
+  // against it so we abort in ~1-2s instead of waiting the full 15s when
+  // the host's gone for good.
+  const fatalPromise = opts.signaling.awaitFatalError().then((reason) => {
+    throw new Error(`signaling fatal: ${reason}`)
+  }) as Promise<never>
+
   try {
-    const channel = await channelPromise
-    return await awaitChannelOpen(pc, channel, opts.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS)
+    const channel = await Promise.race([channelPromise, timeoutPromise, fatalPromise])
+    return await Promise.race([
+      awaitChannelOpen(pc, channel, totalTimeoutMs),
+      fatalPromise,
+    ])
+  } catch (err) {
+    try {
+      pc.close()
+    } catch {
+      // already closed
+    }
+    throw err
   } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle)
     unsubscribe()
   }
 }

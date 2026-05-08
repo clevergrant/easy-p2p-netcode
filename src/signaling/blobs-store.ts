@@ -12,11 +12,14 @@ export function createBlobsStore(blobs: BlobLikeStore): SignalingStore {
   }
 
   return {
-    async createLobby(lobbyCode, hostPeerId, expiresAt) {
+    async createLobby(lobbyCode, hostPeerId, hostToken, expiresAt) {
       const state: LobbyState = {
         hostPeerId,
+        hostToken,
+        hostLastSeenAt: Date.now(),
         locked: false,
         members: { [hostPeerId]: 'player' },
+        peerTokens: {},
         mailboxes: { [hostPeerId]: [] },
         expiresAt,
       }

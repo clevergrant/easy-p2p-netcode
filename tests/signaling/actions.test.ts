@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import {
+  handleClaimHost,
   handleClose,
   handleCreate,
   handleJoin,
@@ -130,6 +131,77 @@ describe('handleLock', () => {
     if (!join.ok || join.action !== 'join') throw new Error('join failed')
     const res = await handleLock(store, lobbyCode, join.peerId, true)
     expect(res.ok).toBe(false)
+  })
+})
+
+describe('handleClaimHost', () => {
+  // Push hostLastSeenAt far enough into the past that the silence check passes.
+  async function makeHostStale(store: ReturnType<typeof createMemoryStore>, code: string) {
+    await store.updateLobby(code, (s) => ({ ...s, hostLastSeenAt: Date.now() - 60_000 }))
+  }
+
+  test('promotes successor when host has been silent', async () => {
+    const { store, lobbyCode, hostPeerId } = await freshLobby()
+    const join = await handleJoin(store, lobbyCode)
+    if (!join.ok || join.action !== 'join') throw new Error('join failed')
+    await makeHostStale(store, lobbyCode)
+
+    const res = await handleClaimHost(store, lobbyCode, join.peerId, join.peerToken)
+    expect(res.ok).toBe(true)
+    if (res.ok && res.action === 'claimHost') {
+      expect(res.hostPeerId).toBe(join.peerId)
+      expect(res.hostToken.length).toBeGreaterThan(0)
+      expect(res.hostToken).not.toBe(join.peerToken)
+    }
+    const lobby = await store.getLobby(lobbyCode)
+    expect(lobby?.hostPeerId).toBe(join.peerId)
+    expect(lobby?.peerTokens[join.peerId]).toBeUndefined()
+    expect(lobby?.peerTokens[hostPeerId]).toBeUndefined()
+  })
+
+  test('rejects when host is still active', async () => {
+    const { store, lobbyCode } = await freshLobby()
+    const join = await handleJoin(store, lobbyCode)
+    if (!join.ok || join.action !== 'join') throw new Error('join failed')
+    // Don't make stale — fresh host should block the claim.
+    const res = await handleClaimHost(store, lobbyCode, join.peerId, join.peerToken)
+    expect(res.ok).toBe(false)
+    if (!res.ok) expect(res.error).toMatch(/host still active/)
+  })
+
+  test('rejects with invalid peer token', async () => {
+    const { store, lobbyCode } = await freshLobby()
+    const join = await handleJoin(store, lobbyCode)
+    if (!join.ok || join.action !== 'join') throw new Error('join failed')
+    await makeHostStale(store, lobbyCode)
+
+    const res = await handleClaimHost(store, lobbyCode, join.peerId, 'wrong-token')
+    expect(res.ok).toBe(false)
+    if (!res.ok) expect(res.error).toMatch(/invalid token/)
+  })
+
+  test('rejects host claiming themselves', async () => {
+    const { store, lobbyCode, hostPeerId } = await freshLobby()
+    await makeHostStale(store, lobbyCode)
+    const res = await handleClaimHost(store, lobbyCode, hostPeerId, 'whatever')
+    expect(res.ok).toBe(false)
+    if (!res.ok) expect(res.error).toMatch(/already host/)
+  })
+
+  test('second claim within silence window is rejected (race)', async () => {
+    const { store, lobbyCode } = await freshLobby()
+    const a = await handleJoin(store, lobbyCode)
+    const b = await handleJoin(store, lobbyCode)
+    if (!a.ok || a.action !== 'join') throw new Error('join a failed')
+    if (!b.ok || b.action !== 'join') throw new Error('join b failed')
+    await makeHostStale(store, lobbyCode)
+
+    const first = await handleClaimHost(store, lobbyCode, a.peerId, a.peerToken)
+    expect(first.ok).toBe(true)
+    // First claim resets hostLastSeenAt — second contender now sees a fresh
+    // host and is denied.
+    const second = await handleClaimHost(store, lobbyCode, b.peerId, b.peerToken)
+    expect(second.ok).toBe(false)
   })
 })
 

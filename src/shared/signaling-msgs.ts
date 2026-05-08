@@ -6,6 +6,18 @@ export const SignalingRequest = z.discriminatedUnion('action', [
   z.object({ action: z.literal('create') }),
   z.object({ action: z.literal('join'), lobbyCode: z.string() }),
   z.object({
+    action: z.literal('resume'),
+    lobbyCode: z.string(),
+    peerId: z.string(),
+    token: z.string(),
+  }),
+  z.object({
+    action: z.literal('claimHost'),
+    lobbyCode: z.string(),
+    peerId: z.string(),
+    token: z.string(),
+  }),
+  z.object({
     action: z.literal('send'),
     lobbyCode: z.string(),
     peerId: z.string(),
@@ -32,8 +44,24 @@ export const SignalingRequest = z.discriminatedUnion('action', [
 export type SignalingRequest = z.infer<typeof SignalingRequest>
 
 export type SignalingResponse =
-  | { ok: true; action: 'create'; lobbyCode: string; peerId: string }
-  | { ok: true; action: 'join'; peerId: string; hostPeerId: string; role: 'player' | 'spectator' }
+  | { ok: true; action: 'create'; lobbyCode: string; peerId: string; hostToken: string }
+  | {
+      ok: true
+      action: 'join'
+      peerId: string
+      hostPeerId: string
+      role: 'player' | 'spectator'
+      peerToken: string
+    }
+  | {
+      ok: true
+      action: 'resume'
+      peerId: string
+      hostPeerId: string
+      role: 'player' | 'spectator'
+      isHost: boolean
+    }
+  | { ok: true; action: 'claimHost'; hostPeerId: string; hostToken: string }
   | { ok: true; action: 'send' }
   | { ok: true; action: 'poll'; messages: Array<{ from: string; message: unknown }> }
   | { ok: true; action: 'lock' }

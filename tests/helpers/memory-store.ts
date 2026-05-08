@@ -3,11 +3,14 @@ import type { LobbyState, SignalingStore } from '../../src/signaling/store.ts'
 export function createMemoryStore(): SignalingStore {
   const lobbies = new Map<string, LobbyState>()
   return {
-    async createLobby(code, hostPeerId, expiresAt) {
+    async createLobby(code, hostPeerId, hostToken, expiresAt) {
       lobbies.set(code, {
         hostPeerId,
+        hostToken,
+        hostLastSeenAt: Date.now(),
         locked: false,
         members: { [hostPeerId]: 'player' },
+        peerTokens: {},
         mailboxes: { [hostPeerId]: [] },
         expiresAt,
       })

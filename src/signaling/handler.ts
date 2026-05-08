@@ -1,11 +1,13 @@
 import { SignalingRequest, type SignalingResponse } from '../shared/signaling-msgs.ts'
 import type { SignalingStore } from './store.ts'
 import {
+  handleClaimHost,
   handleClose,
   handleCreate,
   handleJoin,
   handleLock,
   handlePoll,
+  handleResume,
   handleSend,
 } from './actions.ts'
 
@@ -46,6 +48,10 @@ async function dispatch(
       return handleCreate(store)
     case 'join':
       return handleJoin(store, req.lobbyCode)
+    case 'resume':
+      return handleResume(store, req.lobbyCode, req.peerId, req.token)
+    case 'claimHost':
+      return handleClaimHost(store, req.lobbyCode, req.peerId, req.token)
     case 'send':
       return handleSend(store, req.lobbyCode, req.peerId, req.toPeerId, req.message)
     case 'poll':
